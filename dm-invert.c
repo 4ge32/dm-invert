@@ -36,7 +36,7 @@ static void do_invert(struct bio_vec *bvec, struct bvec_iter *i)
 }
 
 /* Map function, called whenever target gets a bio request. */
-static int dm_invert_map(struct dm_target *target, struct bio *bio)
+static int invert_map(struct dm_target *target, struct bio *bio)
 {
 	struct invert_device *ide = (struct invert_device *)target->private;
 	struct bio_vec bvec;
@@ -77,8 +77,7 @@ static int dm_invert_map(struct dm_target *target, struct bio *bio)
  * offset: offset to data area from start of device_path
  * blksz: block size (minimum 512, maximum 1073741824, must be a power of 2)
  */
-static int dm_invert_ctr(struct dm_target *target,
-			 unsigned int argc, char **argv)
+static int invert_ctr(struct dm_target *target,	unsigned int argc, char **argv)
 {
 	struct invert_device *ide;
 	int ret = 0;
@@ -162,7 +161,7 @@ static int dm_invert_ctr(struct dm_target *target,
  *  This is destruction function, gets called per device.
  *  It removes device and decrement device count.
  */
-static void dm_invert_dtr(struct dm_target *target)
+static void invert_dtr(struct dm_target *target)
 {
 	struct invert_device *ide = (struct invert_device *)target->private;
 	DMINFO("Entry: %s", __func__);
@@ -171,8 +170,9 @@ static void dm_invert_dtr(struct dm_target *target)
 	DMINFO("Exit : %s", __func__);
 }
 
-static void dm_status(struct dm_target *target, status_type_t type,
-		      unsigned int status_flags, char *result, unsigned int maxlen)
+static void invert_status(struct dm_target *target, status_type_t type,
+			  unsigned int status_flags, char *result,
+			  unsigned int maxlen)
 {
 	struct invert_device *ide = target->private;
 	unsigned int sz = 0;
@@ -195,10 +195,10 @@ static struct target_type invert_target = {
 	.name    = "invert",
 	.version = {0,0,1},
 	.module  = THIS_MODULE,
-	.ctr     = dm_invert_ctr,
-	.dtr     = dm_invert_dtr,
-	.status  = dm_status,
-	.map     = dm_invert_map,
+	.ctr     = invert_ctr,
+	.dtr     = invert_dtr,
+	.status  = invert_status,
+	.map     = invert_map,
 };
 
 /*---------Module Functions -----------------*/
