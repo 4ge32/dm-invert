@@ -11,6 +11,8 @@
 struct invert_device {
 	struct dm_dev *dev;
 	sector_t start;
+	unsigned int blksz;
+	bool readable;
 };
 
 static void do_invert(struct bio_vec *bvec, struct bvec_iter *i)
@@ -83,6 +85,8 @@ static int dm_invert_ctr(struct dm_target *target,
 	unsigned int blksz = 0;
 	sector_t INVERT_MAX_BLKSZ_SECTORS = 2097152;
 	sector_t max_block_sectors = min(target->len, INVERT_MAX_BLKSZ_SECTORS);
+	unsigned long long tmp;
+	char dummy;
 
 	DMINFO("Entry: %s", __func__);
 
@@ -115,6 +119,14 @@ static int dm_invert_ctr(struct dm_target *target,
 	}
 
 	if (to_sector(blksz) > max_block_sectors) {
+		char *emsg = "Block size is too large";
+		DMERR("%s\n", emsg);
+		target->error = emsg;
+		return -EINVAL;
+	}
+
+	if (sscanf(argv[1], "%llu%c", &tmp, &dummy) != 1
+	    || tmp != (sector_t)tmp) {
 		char *emsg = "Invalid device offset sector";
 		DMERR("%s\n", emsg);
 		target->error = emsg;
@@ -137,6 +149,9 @@ static int dm_invert_ctr(struct dm_target *target,
 		kfree(ide);
 		ret = -EINVAL;
 	}
+	ide->start= tmp;
+	ide->blksz = blksz;
+	ide->readable = false;
 	target->private = ide;
 
 	DMINFO("Exit : %s ", __func__);
@@ -155,15 +170,35 @@ static void dm_invert_dtr(struct dm_target *target)
 	kfree(ide);
 	DMINFO("Exit : %s", __func__);
 }
-/*  This structure is fops for hello target */
+
+static void dm_status(struct dm_target *target, status_type_t type,
+		      unsigned int status_flags, char *result, unsigned int maxlen)
+{
+	struct invert_device *ide = target->private;
+	unsigned int sz = 0;
+
+	switch (type) {
+	case STATUSTYPE_INFO:
+		DMEMIT("%s %s", ide->dev->name,
+		       ide->readable ? "read correctly" : "read raw data");
+		break;
+
+	case STATUSTYPE_TABLE:
+		DMEMIT("%s %llu %u", ide->dev->name,
+		       (unsigned long long)ide->start, ide->blksz);
+		break;
+	}
+}
+
 static struct target_type invert_target = {
 
-	.name = "invert",
+	.name    = "invert",
 	.version = {0,0,1},
-	.module = THIS_MODULE,
-	.ctr = dm_invert_ctr,
-	.dtr = dm_invert_dtr,
-	.map = dm_invert_map,
+	.module  = THIS_MODULE,
+	.ctr     = dm_invert_ctr,
+	.dtr     = dm_invert_dtr,
+	.status  = dm_status,
+	.map     = dm_invert_map,
 };
 
 /*---------Module Functions -----------------*/

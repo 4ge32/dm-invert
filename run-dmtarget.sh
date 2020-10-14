@@ -11,6 +11,7 @@ usage () {
   echo "      -s            setup device mapper target"
   echo "      -d            test using dd"
   echo "      -r            remove device mapper target"
+  echo "      -x            show dm status"
   echo "      -h            display help"
 }
 
@@ -31,6 +32,14 @@ setup() {
   sudo insmod ./${DM}.ko
   # echo <starting logical sector number> <logical size of device in terms of sector> <target name> <device path> <unsed paramter> | dmsetup create <mapper  name>
   sudo dmsetup create ${DM} --table "0 1 invert ${LOOPD} 0 512"
+}
+
+OK () {
+  echo -e "\t [OK]"
+}
+
+NG() {
+  echo -e "\t [FAILED]"
 }
 
 teardown() {
@@ -59,6 +68,10 @@ setup_fs() {
   ls
 }
 
+show_dm() {
+  sudo dmsetup status ${DM}
+}
+
 test1() {
   # write
   # read
@@ -66,10 +79,18 @@ test1() {
 }
 
 test2() {
-  echo "Not implemented"
+  # status
+  echo -n ${FUNCNAME}
+  res=`sudo dmsetup status ${DM}`
+  exp=`echo '0 1 invert 7:0 read raw data'`
+  if [ "${res}" = "${exp}" ]; then
+    OK
+  else
+    NG
+  fi
 }
 
-while getopts ':tsdfrh' option;
+while getopts ':tsdfrxh' option;
 do
   case "$option" in
     t)
@@ -89,6 +110,9 @@ do
       ;;
     r)
       teardown
+      ;;
+    x)
+      show_dm
       ;;
     h)
       usage
