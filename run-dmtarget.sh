@@ -73,16 +73,34 @@ show_dm() {
 }
 
 test1() {
-  # write
-  # read
-  echo "Not implemented"
+  # write simply
+  echo -n ${FUNCNAME}
+  res=`cmp zero.f ${DISK}`
+  if [ $? == 0 ]; then
+    OK
+  else
+    NG
+  fi
 }
 
 test2() {
-  # status
+  # initialized status
   echo -n ${FUNCNAME}
   res=`sudo dmsetup status ${DM}`
   exp=`echo '0 1 invert 7:0 read raw data'`
+  if [ "${res}" = "${exp}" ]; then
+    OK
+  else
+    NG
+  fi
+}
+
+test3() {
+  # change status
+  echo -n ${FUNCNAME}
+  sudo dmsetup message ${DM} 0 enable
+  res=`sudo dmsetup status ${DM}`
+  exp=`echo '0 1 invert 7:0 read correctly'`
   if [ "${res}" = "${exp}" ]; then
     OK
   else
@@ -94,9 +112,11 @@ while getopts ':tsdfrxh' option;
 do
   case "$option" in
     t)
+      # simple test
       setup
       test1
       test2
+      test3
       teardown
       ;;
     s)
