@@ -22,57 +22,49 @@ struct invert_device {
 	bool readable;
 };
 
-static void do_invert(struct bio_vec *bvec, struct bvec_iter *i)
+static void one_fill_bio(struct bio *bio)
 {
-	char *buf;
-	sector_t sector = (*i).bi_sector;
-	unsigned long offset = (*bvec).bv_offset;
-	size_t len = (*bvec).bv_len;
-	size_t cnt = 0;
+	struct bio_vec bvec;
+	struct bvec_iter i;
+	unsigned long flags;
 
-	DMINFO("sector(%lld)"
-	       "offset(%ld)"
-	       "len(%ld)\n", sector, offset, len);
+	DMINFO("Entry: %s", __func__);
 
-	buf = kmap_atomic((*bvec).bv_page);
-	for (cnt = 0; cnt < len; cnt++) {
-		char *b = buf + cnt;
-		*b = ~(*b);
+	bio_for_each_segment(bvec, bio, i) {
+		char *buf;
+		buf = bvec_kmap_irq(&bvec, &flags);
+		memset(buf, 0xff, bvec.bv_len);
+		flush_dcache_page(bvec.bv_page);
+		bvec_kunmap_irq(buf, &flags);
 	}
-	kunmap_atomic(buf);
 }
 
 /* Map function, called whenever target gets a bio request. */
 static int invert_map(struct dm_target *target, struct bio *bio)
 {
 	struct invert_device *ide = (struct invert_device *)target->private;
-	struct bio_vec bvec;
-	struct bvec_iter i;
 
 	DMINFO("Entry: %s", __func__);
 
-	/*  bio should perform on our underlying device   */
-	bio_set_dev(bio, ide->dev->bdev);
-
-	if (bio_data_dir(bio) == WRITE) {
-		DMINFO("bio is a write request");
-		bio_for_each_segment(bvec, bio, i) {
-			do_invert(&bvec, &i);
-		}
-	} else {
-		DMINFO("bio is a read request");
-		bio_for_each_segment(bvec, bio, i) {
-			sector_t sector = i.bi_sector;
-			unsigned long offset = bvec.bv_offset;
-			size_t len = bvec.bv_len;
-			DMINFO("sector(%lld)"
-			        "offset(%ld)"
-				"len(%ld)\n", sector, offset, len);
-		}
+	switch (bio_op(bio)) {
+	case REQ_OP_READ:
+		if (ide->readable)
+			zero_fill_bio(bio);
+		else
+			one_fill_bio(bio);
+		break;
+	case REQ_OP_WRITE:
+		one_fill_bio(bio);
+		break;
+	default:
+		return DM_MAPIO_KILL;
 	}
 
-	DMINFO("Exit : %s", __func__);
-	return DM_MAPIO_REMAPPED;
+	bio_endio(bio);
+
+	DMINFO("Exit: %s", __func__);
+
+	return DM_MAPIO_SUBMITTED;
 }
 
 /*
@@ -186,6 +178,7 @@ static void invert_status(struct dm_target *target, status_type_t type,
 	struct invert_device *ide = target->private;
 	unsigned int sz = 0;
 
+	DMINFO("Entry: %s", __func__);
 	switch (type) {
 	case STATUSTYPE_INFO:
 		DMEMIT("%s %s", ide->dev->name,
@@ -197,6 +190,7 @@ static void invert_status(struct dm_target *target, status_type_t type,
 		       (unsigned long long)ide->start, ide->blksz);
 		break;
 	}
+	DMINFO("Exit: %s", __func__);
 }
 
 static void switch_readable(struct invert_device *ide, bool readable)
@@ -272,6 +266,8 @@ static int invert_message(struct dm_target *target, unsigned int argc,
 	char dummy;
 	int res = 0;
 
+	DMINFO("Entry: %s", __func__);
+
 	if (argc != 1) {
 		return -EINVAL;
 	}
@@ -298,6 +294,8 @@ static int invert_message(struct dm_target *target, unsigned int argc,
 	default:
 		break;
 	}
+
+	DMINFO("Exit: %s", __func__);
 
 	return res;
 }

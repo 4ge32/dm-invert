@@ -3,6 +3,7 @@
 DM=dm-invert
 LOOPD=/dev/loop0
 DISK=/tmp/mydisk
+REF=
 
 usage () {
   echo "usage: `basename $0` [-sdfrh]"
@@ -26,7 +27,7 @@ zzz() {
 }
 
 setup() {
-  dd if=/dev/zero of=${DISK} bs=4k count=1 # 4k file
+  dd if=/dev/zero of=${DISK} bs=512 count=1 # 4k file
   sudo losetup ${LOOPD} ${DISK} # losetup -f
   make
   sudo insmod ./${DM}.ko
@@ -72,10 +73,14 @@ show_dm() {
   sudo dmsetup status ${DM}
 }
 
+prelude() {
+  printf "%16s" ${1}
+}
+
 test1() {
-  # write simply
-  echo -n ${FUNCNAME}
-  res=`cmp zero.f ${DISK}`
+  # read simply
+  prelude ${FUNCNAME}
+  echo > /dev/null
   if [ $? == 0 ]; then
     OK
   else
@@ -85,7 +90,7 @@ test1() {
 
 test2() {
   # initialized status
-  echo -n ${FUNCNAME}
+  prelude ${FUNCNAME}
   res=`sudo dmsetup status ${DM}`
   exp=`echo '0 1 invert 7:0 read raw data'`
   if [ "${res}" = "${exp}" ]; then
@@ -95,12 +100,14 @@ test2() {
   fi
 }
 
-test3() {
+test_change_status() {
   # change status
-  echo -n ${FUNCNAME}
+  prelude ${FUNCNAME}
   sudo dmsetup message ${DM} 0 enable
   res=`sudo dmsetup status ${DM}`
   exp=`echo '0 1 invert 7:0 read correctly'`
+  # cleanup
+  sudo dmsetup message ${DM} 0 disable
   if [ "${res}" = "${exp}" ]; then
     OK
   else
@@ -108,7 +115,45 @@ test3() {
   fi
 }
 
-while getopts ':tsdfrxh' option;
+test_writeZero_readOne() {
+  # write simply
+  prelude ${FUNCNAME}
+  # write zero
+  sudo dd if=/dev/zero of=/dev/mapper/dm-invert bs=512 count=1 > /dev/null 2>&1
+  # read disk, and save it.
+  sudo dd if=/dev/mapper/dm-invert of=tmp bs=512 count=1 > /dev/null 2>&1
+  # compare with one files
+  res=`cmp ${REF}simple_write.f tmp`
+  sudo rm tmp
+  if [ $? == 0 ]; then
+    OK
+  else
+    NG
+  fi
+}
+
+test_readable() {
+  # write and enable to readable option, read it.
+  prelude ${FUNCNAME}
+  # write zero
+  sudo dd if=/dev/zero of=/dev/mapper/dm-invert bs=512 count=1 > /dev/null 2>&1
+  # enable readable
+  sudo dmsetup message ${DM} 0 enable
+  # read disk, and save it.
+  sudo dd if=/dev/mapper/dm-invert of=tmp bs=512 count=1 > /dev/null 2>&1
+  # compare with zero files
+  res=`cmp ${REF}simple_readable.f tmp`
+  # cleanup
+  sudo dmsetup message ${DM} 0 disable
+  sudo rm tmp
+  if [ $? == 0 ]; then
+    OK
+  else
+    NG
+  fi
+}
+
+while getopts ':tksdfrxh' option;
 do
   case "$option" in
     t)
@@ -116,8 +161,14 @@ do
       setup
       test1
       test2
-      test3
+      test_change_status
+      test_writeZero_readOne
+      test_readable
       teardown
+      ;;
+    k)
+      setup
+      test_readable
       ;;
     s)
       setup
